@@ -1,0 +1,13 @@
+Language: Cpp
+BasedOnStyle: Google
+ColumnLimit: 120
+IndentWidth: 4
+AccessModifierOffset: -4
+DerivePointerAlignment: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortLambdasOnASingleLine: None
+AllowShortLoopsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+SpaceBeforeCpp11BracedList: false
+Cpp11BracedListStyle: true
