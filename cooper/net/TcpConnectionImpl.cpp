@@ -540,6 +540,14 @@ void TcpConnectionImpl::send(MsgBuffer&& buffer) {
         });
     }
 }
+void TcpConnectionImpl::sendJson(const nlohmann::json& json) {
+    std::string str = json.dump();
+    int size = static_cast<int>(str.size());
+    std::vector<char> buffer(sizeof(size) + size);
+    memcpy(buffer.data(), &size, sizeof(size));
+    memcpy(buffer.data() + sizeof(size), str.data(), size);
+    send(buffer.data(), buffer.size());
+}
 void TcpConnectionImpl::sendFile(const char* fileName, size_t offset, size_t length) {
     assert(fileName);
     int fd = open(fileName, O_RDONLY);

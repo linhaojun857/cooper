@@ -54,6 +54,7 @@ public:
     virtual void send(MsgBuffer&& buffer) override;
     virtual void send(const std::shared_ptr<std::string>& msgPtr) override;
     virtual void send(const std::shared_ptr<MsgBuffer>& msgPtr) override;
+    virtual void sendJson(const json& json) override;
     virtual void sendFile(const char* fileName, size_t offset = 0, size_t length = 0) override;
     virtual void sendFile(const wchar_t* fileName, size_t offset = 0, size_t length = 0) override;
     virtual void sendStream(std::function<std::size_t(char*, std::size_t)> callback) override;
@@ -151,6 +152,7 @@ public:
         timingWheel->insertEntry(timeout, entry);
     }
 
+    friend class AppTcpServer;
 private:
     /// Internal use only.
     std::weak_ptr<KickoffEntry> kickoffEntry_;

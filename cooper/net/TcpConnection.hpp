@@ -51,6 +51,13 @@ public:
     virtual void send(const std::shared_ptr<MsgBuffer>& msgPtr) = 0;
 
     /**
+     * @brief Send json to the peer.
+     *
+     * @param json
+     */
+    virtual void sendJson(const json& json) = 0;
+
+    /**
      * @brief Send a file to the peer.
      *
      * @param fileName in UTF-8

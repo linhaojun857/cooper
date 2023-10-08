@@ -8,7 +8,6 @@ HttpServer::HttpServer(uint16_t port) {
     loopThread_.run();
     InetAddress addr(port);
     server_ = std::make_shared<TcpServer>(loopThread_.getLoop(), addr, "HttpServer");
-    server_->kickoffIdleConnections(KEEP_ALIVE_TIMEOUT);
 }
 void HttpServer::start(int loopNum) {
     server_->setRecvMessageCallback(
@@ -21,6 +20,7 @@ void HttpServer::start(int loopNum) {
         }
     });
     server_->setIoLoopNum(loopNum);
+    server_->kickoffIdleConnections(KEEP_ALIVE_TIMEOUT);
     server_->start();
     loopThread_.wait();
 }

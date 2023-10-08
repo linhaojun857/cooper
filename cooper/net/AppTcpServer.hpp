@@ -8,6 +8,9 @@
 #include "cooper/util/Logger.hpp"
 #include "cooper/util/NonCopyable.hpp"
 
+#define PING_TYPE 100
+#define PONG_TYPE 200
+
 using namespace nlohmann;
 
 namespace cooper {
@@ -19,7 +22,8 @@ public:
     using protocolType = uint32_t;
     using Handler = std::function<void(const TcpConnectionPtr&, const json&)>;
 
-    explicit AppTcpServer(uint16_t port = 8888);
+    explicit AppTcpServer(uint16_t port = 8888, bool pingPong = true, double pingPongInterval = 10,
+                          size_t pingPongTimeout = 3);
 
     ~AppTcpServer();
 
@@ -42,11 +46,18 @@ public:
     void registerProtocolHandler(protocolType header, const Handler& handler);
 
 private:
+    static void resetPingPongEntry(const TcpConnectionPtr& connPtr);
+
     void recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer);
 
     EventLoopThread loopThread_;
     std::shared_ptr<TcpServer> server_;
     std::unordered_map<protocolType, Handler> handlers_;
+    bool pingPong_;
+    double pingPongInterval_;
+    size_t pingPongTimeout_;
+    std::unordered_map<TcpConnectionPtr, TimerId> timerIds_;
+    std::shared_ptr<TimingWheel> timingWheel_;
 };
 }  // namespace cooper
 

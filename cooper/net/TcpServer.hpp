@@ -225,6 +225,7 @@ public:
     }
 
 private:
+    friend class AppTcpServer;
     void handleCloseInLoop(const TcpConnectionPtr& connectionPtr);
     void newConnection(int fd, const InetAddress& peer);
     void connectionClosed(const TcpConnectionPtr& connectionPtr);
