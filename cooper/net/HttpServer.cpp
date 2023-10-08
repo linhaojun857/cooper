@@ -165,9 +165,12 @@ bool HttpServer::handleFileRequest(const cooper::HttpRequest& request, cooper::H
 bool HttpServer::sendResponse(const cooper::TcpConnectionPtr& conn, cooper::HttpResponse& response) {
     std::string res;
     response.headers_[HttpHeader::SERVER] = HttpHeader::Value::SERVER;
-    std::stringstream ss;
-    ss << "timeout=" << KEEP_ALIVE_TIMEOUT << ", max=" << keepAliveRequests_[conn].second;
-    response.headers_[HttpHeader::CONNECTION] = ss.str();
+    if (keepAliveRequests_[conn].second == 0) {
+        // keep-alive is closed
+        std::stringstream ss;
+        ss << "timeout=" << KEEP_ALIVE_TIMEOUT << ", max=" << keepAliveRequests_[conn].second;
+        response.headers_[HttpHeader::CONNECTION] = ss.str();
+    }
     if (!response.body_.empty()) {
         response.headers_[HttpHeader::CONTENT_LENGTH] = std::to_string(response.body_.size());
     }

@@ -8,7 +8,7 @@
 
 #define COOPER_VERSION "1.0"
 #define KEEP_ALIVE_TIMEOUT 60
-// 3 is test
+// 3 is a tested number
 #define MAX_KEEP_ALIVE_REQUESTS 3
 
 namespace cooper {
