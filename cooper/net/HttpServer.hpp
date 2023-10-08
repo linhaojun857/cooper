@@ -57,6 +57,8 @@ private:
 
     bool handleFileRequest(const HttpRequest& request, HttpResponse& response);
 
+    bool sendResponse(const TcpConnectionPtr& conn, HttpResponse& response);
+
 private:
     EventLoopThread loopThread_;
     std::shared_ptr<TcpServer> server_;
@@ -68,7 +70,8 @@ private:
         Headers headers;
     };
     std::vector<MountPointEntry> baseDirs_;
-    std::unordered_map<TcpConnectionPtr, int> keepAliveRequests_;
+    // std::pair<int,int> first: current request count, second: max keep alive request count
+    std::unordered_map<TcpConnectionPtr, std::pair<int, int>> keepAliveRequests_;
 };
 
 }  // namespace cooper

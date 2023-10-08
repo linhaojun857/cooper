@@ -8,6 +8,7 @@
 
 #define COOPER_VERSION "1.0"
 #define KEEP_ALIVE_TIMEOUT 60
+// 3 is test
 #define MAX_KEEP_ALIVE_REQUESTS 3
 
 namespace cooper {
@@ -442,7 +443,7 @@ private:
 class HttpResponse;
 class HttpContentWriter {
 public:
-    friend bool sendResponse(const TcpConnectionPtr& conn, HttpResponse& response);
+    friend class HttpServer;
     using Ptr = std::shared_ptr<HttpContentWriter>;
 
     HttpContentWriter(const std::string& file, const std::string& contentType) {
@@ -462,7 +463,6 @@ private:
 class HttpResponse {
 public:
     friend class HttpServer;
-    friend bool sendResponse(const TcpConnectionPtr& conn, HttpResponse& response);
     HttpResponse() {
         version_ = "HTTP/1.1";
         statusCode_ = HttpStatus::CODE_200;
@@ -480,7 +480,6 @@ private:
 
 using HttpHandler = std::function<void(const HttpRequest&, HttpResponse&)>;
 using HttpRoutes = std::unordered_map<HttpPath, HttpHandler>;
-bool sendResponse(const TcpConnectionPtr& conn, HttpResponse& response);
 }  // namespace cooper
 
 #endif

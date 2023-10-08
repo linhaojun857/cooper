@@ -13,12 +13,10 @@ HttpServer::HttpServer(uint16_t port) {
 void HttpServer::start(int loopNum) {
     server_->setRecvMessageCallback(
         std::bind(&HttpServer::recvMsgCallback, this, std::placeholders::_1, std::placeholders::_2));
-    server_->setConnectionCallback([this](const TcpConnectionPtr& connPtr) {
+    server_->setConnectionCallback([](const TcpConnectionPtr& connPtr) {
         if (connPtr->connected()) {
-            keepAliveRequests_[connPtr] = 0;
             LOG_DEBUG << "New connection";
         } else if (connPtr->disconnected()) {
-            keepAliveRequests_.erase(connPtr);
             LOG_DEBUG << "connection disconnected";
         }
     });
@@ -77,12 +75,27 @@ void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer
     HttpResponse response;
     request.conn_ = conn;
     request.buffer_ = buffer;
-    LOG_INFO << "recv msg: \n" << std::string(buffer->peek(), buffer->readableBytes());
+    LOG_DEBUG << "recv msg: \n" << std::string(buffer->peek(), buffer->readableBytes());
     if (!request.parseRequestStartingLine() || !request.parseHeaders() || !request.parseBody()) {
         response.statusCode_ = HttpStatus::CODE_400;
         sendResponse(conn, response);
         conn->forceClose();
         return;
+    }
+    auto it = keepAliveRequests_.find(conn);
+    if (it == keepAliveRequests_.end()) {
+        if ((request.version_ == "HTTP/1.0" &&
+             request.headers_[HttpHeader::CONNECTION] == HttpHeader::Value::CONNECTION_KEEP_ALIVE) ||
+            (request.version_ == "HTTP/1.1" &&
+             request.headers_[HttpHeader::CONNECTION] != HttpHeader::Value::CONNECTION_CLOSE)) {
+            // open keep-alive
+            keepAliveRequests_[conn].first = 0;
+            keepAliveRequests_[conn].second = MAX_KEEP_ALIVE_REQUESTS;
+        } else {
+            // close keep-alive
+            keepAliveRequests_[conn].first = 0;
+            keepAliveRequests_[conn].second = 0;
+        }
     }
     if (!handleFileRequest(request, response)) {
         handleRequest(request, response);
@@ -90,9 +103,10 @@ void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer
     if (response.statusCode_ != HttpStatus::CODE_200) {
         conn->forceClose();
     }
-    keepAliveRequests_[conn]++;
-    if (keepAliveRequests_[conn] >= MAX_KEEP_ALIVE_REQUESTS) {
+    keepAliveRequests_[conn].first++;
+    if (keepAliveRequests_[conn].first >= keepAliveRequests_[conn].second) {
         conn->forceClose();
+        keepAliveRequests_.erase(conn);
     }
 }
 
@@ -146,6 +160,39 @@ bool HttpServer::handleFileRequest(const cooper::HttpRequest& request, cooper::H
         }
     }
     return false;
+}
+
+bool HttpServer::sendResponse(const cooper::TcpConnectionPtr& conn, cooper::HttpResponse& response) {
+    std::string res;
+    response.headers_[HttpHeader::SERVER] = HttpHeader::Value::SERVER;
+    std::stringstream ss;
+    ss << "timeout=" << KEEP_ALIVE_TIMEOUT << ", max=" << keepAliveRequests_[conn].second;
+    response.headers_[HttpHeader::CONNECTION] = ss.str();
+    if (!response.body_.empty()) {
+        response.headers_[HttpHeader::CONTENT_LENGTH] = std::to_string(response.body_.size());
+    }
+    if (response.contentWriter_) {
+        size_t size = utils::getFileSize(response.contentWriter_->file_);
+        response.contentWriter_->size_ = size;
+        response.headers_[HttpHeader::CONTENT_TYPE] = response.contentWriter_->contentType_;
+        if (size > 0) {
+            response.headers_[HttpHeader::CONTENT_LENGTH] = std::to_string(size);
+        }
+    }
+    res += response.version_ + " " + std::to_string(response.statusCode_.code) + " " +
+           response.statusCode_.description + "\r\n";
+    for (auto& header : response.headers_) {
+        res += header.first + ": " + header.second + "\r\n";
+    }
+    res += "\r\n";
+    if (!response.contentWriter_) {
+        res += response.body_;
+    }
+    conn->send(res);
+    if (response.contentWriter_) {
+        response.contentWriter_->write(conn);
+    }
+    return true;
 }
 
 }  // namespace cooper

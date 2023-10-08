@@ -195,37 +195,4 @@ void HttpContentWriter::write(const cooper::TcpConnectionPtr& conn) {
     conn->sendFile(file_.c_str(), 0, size_);
 }
 
-bool sendResponse(const TcpConnectionPtr& conn, HttpResponse& response) {
-    std::string res;
-    response.headers_[HttpHeader::SERVER] = HttpHeader::Value::SERVER;
-    std::stringstream ss;
-    ss << "timeout=" << KEEP_ALIVE_TIMEOUT << ", max=" << MAX_KEEP_ALIVE_REQUESTS;
-    response.headers_[HttpHeader::CONNECTION] = ss.str();
-    if (!response.body_.empty()) {
-        response.headers_[HttpHeader::CONTENT_LENGTH] = std::to_string(response.body_.size());
-    }
-    if (response.contentWriter_) {
-        size_t size = utils::getFileSize(response.contentWriter_->file_);
-        response.contentWriter_->size_ = size;
-        response.headers_[HttpHeader::CONTENT_TYPE] = response.contentWriter_->contentType_;
-        if (size > 0) {
-            response.headers_[HttpHeader::CONTENT_LENGTH] = std::to_string(size);
-        }
-    }
-    res += response.version_ + " " + std::to_string(response.statusCode_.code) + " " +
-           response.statusCode_.description + "\r\n";
-    for (auto& header : response.headers_) {
-        res += header.first + ": " + header.second + "\r\n";
-    }
-    res += "\r\n";
-    if (!response.contentWriter_) {
-        res += response.body_;
-    }
-    conn->send(res);
-    if (response.contentWriter_) {
-        response.contentWriter_->write(conn);
-    }
-    return true;
-}
-
 }  // namespace cooper
