@@ -22,6 +22,7 @@ class TcpConnectionImpl : public TcpConnection,
                           public std::enable_shared_from_this<TcpConnectionImpl> {
     friend class TcpServer;
     friend class TcpClient;
+    friend class AppTcpServer;
     friend void cooper::removeConnection(EventLoop* loop, const TcpConnectionPtr& conn);
 
 public:
@@ -152,7 +153,6 @@ public:
         timingWheel->insertEntry(timeout, entry);
     }
 
-    friend class AppTcpServer;
 private:
     /// Internal use only.
     std::weak_ptr<KickoffEntry> kickoffEntry_;
