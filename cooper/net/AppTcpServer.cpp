@@ -52,6 +52,9 @@ void AppTcpServer::start(int loopNum) {
                 timerIds_.erase(connPtr);
             }
         }
+        if (connectionCallback_) {
+            connectionCallback_(connPtr);
+        }
     });
     server_->setIoLoopNum(loopNum);
     if (pingPong_) {
@@ -71,6 +74,10 @@ void AppTcpServer::stop() {
 void AppTcpServer::registerProtocolHandler(cooper::AppTcpServer::protocolType header,
                                            const cooper::AppTcpServer::Handler& handler) {
     handlers_[header] = handler;
+}
+
+void AppTcpServer::setConnectionCallback(const ConnectionCallback& cb) {
+    connectionCallback_ = cb;
 }
 
 void AppTcpServer::resetPingPongEntry(const cooper::TcpConnectionPtr& connPtr) {

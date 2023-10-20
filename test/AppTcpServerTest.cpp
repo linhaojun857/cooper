@@ -28,6 +28,13 @@ int main() {
         LOG_ERROR << "connect mysql failed";
     }
     mysql.create_datatable<Person>(ormpp_auto_key{"id"});
+    server.setConnectionCallback([](const TcpConnectionPtr& connPtr) {
+        if (connPtr->connected()) {
+            LOG_DEBUG << "AppTcpServerTest new connection";
+        } else if (connPtr->disconnected()) {
+            LOG_DEBUG << "AppTcpServerTest connection disconnected";
+        }
+    });
     server.registerProtocolHandler(TEST, [&mysql](const TcpConnectionPtr& conn, const json& j) {
         Person p;
         p.name = j["name"];

@@ -45,6 +45,12 @@ public:
      */
     void registerProtocolHandler(protocolType header, const Handler& handler);
 
+    /**
+     * @brief set connection callback
+     * @param cb
+     */
+    void setConnectionCallback(const ConnectionCallback& cb);
+
 private:
     static void resetPingPongEntry(const TcpConnectionPtr& connPtr);
 
@@ -58,6 +64,7 @@ private:
     size_t pingPongTimeout_;
     std::unordered_map<TcpConnectionPtr, TimerId> timerIds_;
     std::shared_ptr<TimingWheel> timingWheel_;
+    ConnectionCallback connectionCallback_;
 };
 }  // namespace cooper
 
