@@ -70,6 +70,10 @@ bool HttpServer::removeMountPoint(const std::string& mountPoint) {
     return false;
 }
 
+void HttpServer::setFileAuthCallback(const cooper::FileAuthCallback& cb) {
+    fileAuthCallback_ = cb;
+}
+
 void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer) {
     HttpRequest request;
     HttpResponse response;
@@ -149,6 +153,13 @@ bool HttpServer::handleFileRequest(const cooper::HttpRequest& request, cooper::H
                     path += "index.html";
                 }
                 if (utils::isFile(path)) {
+                    if (fileAuthCallback_) {
+                        if (!fileAuthCallback_(path)) {
+                            response.statusCode_ = HttpStatus::CODE_403;
+                            sendResponse(request.conn_, response);
+                            return true;
+                        }
+                    }
                     for (const auto& kv : entry.headers) {
                         response.headers_[kv.first] = kv.second;
                     }

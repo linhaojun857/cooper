@@ -50,6 +50,12 @@ public:
      */
     bool removeMountPoint(const std::string& mountPoint);
 
+    /**
+     * @brief set file auth callback
+     * @param cb
+     */
+    void setFileAuthCallback(const FileAuthCallback& cb);
+
 private:
     void recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer);
 
@@ -72,6 +78,7 @@ private:
     std::vector<MountPointEntry> baseDirs_;
     // std::pair<int,int> first: current request count, second: max keep alive request count
     std::unordered_map<TcpConnectionPtr, std::pair<int, int>> keepAliveRequests_;
+    FileAuthCallback fileAuthCallback_;
 };
 
 }  // namespace cooper

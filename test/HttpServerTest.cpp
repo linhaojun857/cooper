@@ -42,7 +42,11 @@ int main() {
         ");");
     HttpServer server;
     Headers headers;
-    server.addMountPoint("/static/", "/home/linhaojun/cpp-code/cooper/test/front", headers);
+    server.setFileAuthCallback([](const std::string& path) {
+        LOG_DEBUG << "file path: " << path;
+        return true;
+    });
+    server.addMountPoint("/static/", "/home/linhaojun/cpp-code/cooper/test/static", headers);
     server.addEndpoint("GET", "/hello", [](const HttpRequest& req, HttpResponse& resp) {
         resp.body_ =
             "<html>"
