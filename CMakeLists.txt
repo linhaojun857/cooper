@@ -73,7 +73,9 @@ add_library(cooper
         cooper/util/Utilities.cpp
         cooper/util/TimingWheel.cpp
         cooper/util/TimingWheel.hpp
-        cooper/util/Semaphore.hpp)
+        cooper/util/Semaphore.hpp
+        cooper/util/ThreadPool.cpp
+        cooper/util/ThreadPool.hpp)
 
 set_target_properties(cooper PROPERTIES LINKER_LANGUAGE CXX)
 find_package(OpenSSL REQUIRED)
@@ -87,10 +89,11 @@ target_include_directories(cooper PUBLIC third_party/ormpp/include)
 target_compile_definitions(cooper PUBLIC ORMPP_ENABLE_MYSQL)
 
 if (COOPER_TEST)
-    add_executable(AppTcpServerTest
-            test/AppTcpServerTest.cpp)
-    target_link_libraries(AppTcpServerTest cooper)
-    add_executable(HttpServerTest
-            test/HttpServerTest.cpp)
-    target_link_libraries(HttpServerTest cooper)
+    file(GLOB_RECURSE TEST_SOURCES "test/*.cpp")
+    foreach (TEST_SOURCE ${TEST_SOURCES})
+        get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        add_executable(${TEST_NAME} ${TEST_SOURCE}
+                test/ThreadPoolTest.cpp)
+        target_link_libraries(${TEST_NAME} PRIVATE cooper)
+    endforeach ()
 endif ()
