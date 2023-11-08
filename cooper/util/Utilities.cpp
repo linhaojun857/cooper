@@ -19,6 +19,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <set>
 
 #include "cooper/util/Logger.hpp"
 
@@ -389,6 +390,42 @@ size_t getFileSize(const std::string& path) {
         return 0;
     }
     return st.st_size;
+}
+
+std::string trimDoubleQuotesCopy(const std::string& s) {
+    if (s.length() >= 2 && s.front() == '"' && s.back() == '"') {
+        return s.substr(1, s.size() - 2);
+    }
+    return s;
+}
+
+std::string trimCopy(const std::string& s) {
+    auto r = trim(s.data(), s.data() + s.size(), 0, s.size());
+    return s.substr(r.first, r.second - r.first);
+}
+
+void parseDispositionParams(const std::string& s, std::multimap<std::string, std::string>& params) {
+    std::set<std::string> cache;
+    split(s.data(), s.data() + s.size(), ';', [&](const char* b, const char* e) {
+        std::string kv(b, e);
+        if (cache.find(kv) != cache.end()) {
+            return;
+        }
+        cache.insert(kv);
+        std::string key;
+        std::string val;
+        split(b, e, '=', [&](const char* b2, const char* e2) {
+            if (key.empty()) {
+                key.assign(b2, e2);
+            } else {
+                val.assign(b2, e2);
+            }
+        });
+
+        if (!key.empty()) {
+            params.emplace(trimDoubleQuotesCopy(key), trimDoubleQuotesCopy(val));
+        }
+    });
 }
 
 }  // namespace utils

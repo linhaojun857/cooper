@@ -2,6 +2,7 @@
 #define util_Utilities_hpp
 
 #include <functional>
+#include <map>
 #include <string>
 
 namespace cooper {
@@ -160,6 +161,12 @@ std::string fileExtension(const std::string& path);
 std::string findContentType(const std::string& path);
 
 size_t getFileSize(const std::string& path);
+
+std::string trimDoubleQuotesCopy(const std::string& s);
+
+std::string trimCopy(const std::string& s);
+
+void parseDispositionParams(const std::string& s, std::multimap<std::string, std::string>& params);
 
 }  // namespace utils
 

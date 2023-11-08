@@ -267,6 +267,16 @@ public:
     }
 
     /**
+     * @brief Find the position of the buffer where the data is found.
+     * @param str
+     * @return const char*
+     */
+    const char* find(const std::string& str) const {
+        const char* ret = std::search(peek(), beginWrite(), std::begin(str), std::end(str));
+        return ret == beginWrite() ? NULL : ret;
+    }
+
+    /**
      * @brief Find the position of the buffer where the CRLF is found.
      *
      * @return const char*

@@ -414,9 +414,52 @@ public:
     static const char* const EXPECT;             // Expect
 };
 
+struct ci {
+    bool operator()(const std::string& s1, const std::string& s2) const {
+        return std::lexicographical_compare(s1.begin(), s1.end(), s2.begin(), s2.end(),
+                                            [](unsigned char c1, unsigned char c2) {
+                                                return ::tolower(c1) < ::tolower(c2);
+                                            });
+    }
+};
+
 using HttpPath = std::string;
-using Headers = std::unordered_map<std::string, std::string>;
+using Headers = std::map<std::string, std::string, ci>;
 using Body = std::string;
+
+class HttpRequest;
+
+struct MultipartFormData {
+    std::string name;
+    std::string content;
+    std::string filename;
+    std::string contentType;
+};
+
+using MultipartFormDataMap = std::multimap<std::string, MultipartFormData>;
+
+class MultipartFormDataParser {
+public:
+    MultipartFormDataParser() = default;
+
+    void setBoundary(std::string&& boundary);
+
+    bool parse(MsgBuffer* buffer, HttpRequest& request);
+
+private:
+    void clearFileInfo();
+
+    static bool startWithCaseIgnore(const std::string& a, const std::string& b);
+
+    const std::string dash_ = "--";
+    const std::string crlf_ = "\r\n";
+    std::string boundary_;
+    std::string dashBoundaryCrlf_;
+    std::string crlfDashBoundary_;
+
+    size_t state_ = 0;
+    MultipartFormData file_;
+};
 
 class HttpRequest {
     friend class HttpServer;
@@ -428,12 +471,15 @@ private:
 
     bool parseBody();
 
+    bool isMultipartFormData();
+
 public:
     std::string method_;
     std::string path_;
     std::string version_;
     Headers headers_;
     Body body_;
+    MultipartFormDataMap files;
 
 private:
     TcpConnectionPtr conn_;

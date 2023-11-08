@@ -1,5 +1,7 @@
 #include "Http.hpp"
 
+#include <regex>
+
 #include "cooper/util/Logger.hpp"
 #include "cooper/util/Utilities.hpp"
 
@@ -105,6 +107,171 @@ const char* const HttpHeader::CORS_MAX_AGE = "Access-Control-Max-Age";
 const char* const HttpHeader::ACCEPT_ENCODING = "Accept-Encoding";
 const char* const HttpHeader::EXPECT = "Expect";
 
+bool parseMultipartBoundary(const std::string& contentType, std::string& boundary) {
+    auto boundaryKeyword = "boundary=";
+    auto pos = contentType.find(boundaryKeyword);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    auto end = contentType.find(';', pos);
+    auto beg = pos + strlen(boundaryKeyword);
+    boundary = utils::trimDoubleQuotesCopy(contentType.substr(beg, end - beg));
+    return !boundary.empty();
+}
+
+void MultipartFormDataParser::setBoundary(std::string&& boundary) {
+    boundary_ = boundary;
+    dashBoundaryCrlf_ = dash_ + boundary_ + crlf_;
+    crlfDashBoundary_ = crlf_ + dash_ + boundary_;
+}
+
+bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpRequest& request) {
+    MultipartFormDataMap::iterator cur;
+    auto begin = buffer->peek();
+    auto contentLengthStr = request.headers_["content-length"];
+    int contentLength = -1;
+    if (!contentLengthStr.empty()) {
+        contentLength = std::stoi(contentLengthStr);
+    }
+    while (buffer->readableBytes() > 0) {
+        switch (state_) {
+            case 0: {
+                if (buffer->readableBytes() < dashBoundaryCrlf_.size()) {
+                    return true;
+                }
+                auto dashBoundaryCrlf = buffer->find(dashBoundaryCrlf_);
+                if (!dashBoundaryCrlf) {
+                    return false;
+                }
+                buffer->retrieveUntil(dashBoundaryCrlf + dashBoundaryCrlf_.size());
+                state_ = 1;
+                break;
+            }
+            case 1: {
+                clearFileInfo();
+                state_ = 2;
+                break;
+            }
+            case 2: {
+                auto crlf = buffer->find(crlf_);
+                while (crlf) {
+                    if (crlf == buffer->peek()) {
+                        cur = request.files.emplace(file_.name, file_);
+                        buffer->retrieve(crlf_.size());
+                        state_ = 3;
+                        break;
+                    }
+                    static const std::string headerName = "content-type:";
+                    const auto header = std::string(buffer->peek(), crlf - buffer->peek());
+                    if (startWithCaseIgnore(header, headerName)) {
+                        file_.contentType = utils::trimCopy(header.substr(headerName.size()));
+                    } else {
+                        static const std::regex reContentDisposition(R"~(^Content-Disposition:\s*form-data;\s*(.*)$)~",
+                                                                     std::regex_constants::icase);
+                        std::smatch m;
+                        if (std::regex_match(header, m, reContentDisposition)) {
+                            std::multimap<std::string, std::string> params;
+                            utils::parseDispositionParams(m[1], params);
+                            auto iter = params.find("name");
+                            if (iter != params.end()) {
+                                file_.name = iter->second;
+                            } else {
+                                return false;
+                            }
+
+                            iter = params.find("filename");
+                            if (iter != params.end()) {
+                                file_.filename = iter->second;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                    buffer->retrieve(crlf - buffer->peek() + crlf_.size());
+                    crlf = buffer->find(crlf_);
+                }
+                if (state_ != 3) {
+                    return true;
+                }
+                break;
+            }
+            case 3: {
+                if (buffer->readableBytes() < crlfDashBoundary_.size()) {
+                    return true;
+                }
+                auto crlfDashBoundary = buffer->find(crlfDashBoundary_);
+                if (crlfDashBoundary) {
+                    auto len = crlfDashBoundary - buffer->peek();
+                    auto& content = cur->second.content;
+                    if (content.size() + len > content.max_size()) {
+                        return false;
+                    }
+                    content.append(buffer->peek(), len);
+                    buffer->retrieve(len + crlfDashBoundary_.size());
+                    state_ = 4;
+                } else {
+                    auto len = buffer->readableBytes() - crlfDashBoundary_.size();
+                    if (len > 0) {
+                        auto& content = cur->second.content;
+                        if (content.size() + len > content.max_size()) {
+                            return false;
+                        }
+                        content.append(buffer->peek(), len);
+                        buffer->retrieve(len);
+                    }
+                    return true;
+                }
+                break;
+            }
+            case 4: {
+                if (buffer->readableBytes() < crlf_.size()) {
+                    return true;
+                }
+                auto crlf = buffer->find(crlf_);
+                if (crlf == buffer->peek()) {
+                    buffer->retrieve(crlf_.size());
+                    state_ = 1;
+                } else {
+                    if (buffer->readableBytes() < dash_.size()) {
+                        return true;
+                    }
+                    auto dash = buffer->find(dash_);
+                    if (dash == buffer->peek()) {
+                        buffer->retrieve(dash_.size());
+                        if (contentLength != -1) {
+                            buffer->retrieve(contentLength - (buffer->peek() - begin));
+                        } else {
+                            buffer->retrieveAll();
+                        }
+                    } else {
+                        return true;
+                    }
+                }
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+void MultipartFormDataParser::clearFileInfo() {
+    file_.name.clear();
+    file_.filename.clear();
+    file_.contentType.clear();
+}
+
+bool MultipartFormDataParser::startWithCaseIgnore(const std::string& a, const std::string& b) {
+    if (a.size() < b.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < b.size(); i++) {
+        if (::tolower(a[i]) != ::tolower(b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool HttpRequest::parseRequestStartingLine() {
     auto ret = buffer_->findCRLF();
     if (!ret) {
@@ -174,18 +341,38 @@ bool HttpRequest::parseHeaders() {
     return true;
 }
 bool HttpRequest::parseBody() {
-    auto contentLength = headers_[HttpHeader::CONTENT_LENGTH];
-    if (contentLength.empty()) {
-        body_ = std::string(buffer_->peek(), buffer_->readableBytes());
-        buffer_->retrieveAll();
+    if (isMultipartFormData()) {
+        MultipartFormDataParser multipartFormDataParser;
+        const auto& contentType = headers_[HttpHeader::CONTENT_TYPE];
+        std::string boundary;
+        if (!parseMultipartBoundary(contentType, boundary)) {
+            return false;
+        }
+        multipartFormDataParser.setBoundary(std::move(boundary));
+        return multipartFormDataParser.parse(buffer_, *this);
+    } else {
+        auto contentLength = headers_[HttpHeader::CONTENT_LENGTH];
+        if (contentLength.empty()) {
+            body_ = std::string(buffer_->peek(), buffer_->readableBytes());
+            buffer_->retrieveAll();
+            return true;
+        }
+        size_t len = std::stoul(contentLength);
+        if (len > buffer_->readableBytes()) {
+            return false;
+        }
+        body_ = buffer_->read(len);
         return true;
     }
-    size_t len = std::stoul(contentLength);
-    if (len > buffer_->readableBytes()) {
+}
+
+bool HttpRequest::isMultipartFormData() {
+    auto iter = headers_.find(HttpHeader::CONTENT_TYPE);
+    if (iter == headers_.end()) {
         return false;
     }
-    body_ = buffer_->read(len);
-    return true;
+    const auto& contentType = iter->second;
+    return !contentType.rfind("multipart/form-data", 0);
 }
 
 void HttpContentWriter::write(const cooper::TcpConnectionPtr& conn) {

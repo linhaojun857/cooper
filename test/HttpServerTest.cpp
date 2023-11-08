@@ -142,6 +142,18 @@ int main() {
         }
         resp.body_ = j_resp.dump();
     });
+    server.addEndpoint("POST", "/testMultiPart", [](const HttpRequest& req, HttpResponse& resp) {
+        for (const auto& item : req.files) {
+            LOG_INFO << "\n"
+                     << "name: " << item.second.name << "\n"
+                     << "content: " << item.second.content << "\n"
+                     << "filename: " << item.second.filename << "\n";
+        }
+        json j_resp;
+        j_resp["code"] = 200;
+        j_resp["msg"] = "success";
+        resp.body_ = j_resp.dump();
+    });
     server.start();
     return 0;
 }
