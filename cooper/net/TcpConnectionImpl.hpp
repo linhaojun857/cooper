@@ -23,6 +23,7 @@ class TcpConnectionImpl : public TcpConnection,
     friend class TcpServer;
     friend class TcpClient;
     friend class AppTcpServer;
+    friend class HttpServer;
     friend void cooper::removeConnection(EventLoop* loop, const TcpConnectionPtr& conn);
 
 public:
@@ -194,7 +195,7 @@ protected:
     enum class ConnStatus { Disconnected, Connecting, Connected, Disconnecting };
     EventLoop* loop_;
     std::unique_ptr<Channel> ioChannelPtr_;
-    std::unique_ptr<Socket> socketPtr_;
+    std::shared_ptr<Socket> socketPtr_;
     MsgBuffer readBuffer_;
     std::list<BufferNodePtr> writeBufferList_;
     void readCallback();

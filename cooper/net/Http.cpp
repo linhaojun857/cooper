@@ -125,10 +125,10 @@ void MultipartFormDataParser::setBoundary(std::string&& boundary) {
     crlfDashBoundary_ = crlf_ + dash_ + boundary_;
 }
 
-bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpRequest& request) {
+bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpRequest& request, ParseContext& context) {
     MultipartFormDataMap::iterator cur;
     auto begin = buffer->peek();
-    auto contentLengthStr = request.headers_["content-length"];
+    auto contentLengthStr = request.headers_[HttpHeader::CONTENT_LENGTH];
     int contentLength = -1;
     if (!contentLengthStr.empty()) {
         contentLength = std::stoi(contentLengthStr);
@@ -219,7 +219,8 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                         content.append(buffer->peek(), len);
                         buffer->retrieve(len);
                     }
-                    return true;
+                    int* err;
+                    buffer->readFd(context.socketPtr->fd(), err);
                 }
                 break;
             }
@@ -340,7 +341,16 @@ bool HttpRequest::parseHeaders() {
     }
     return true;
 }
-bool HttpRequest::parseBody() {
+
+std::string HttpRequest::getHeaderValue(const std::string& key) const {
+    auto iter = headers_.find(key);
+    if (iter == headers_.end()) {
+        return "";
+    }
+    return iter->second;
+}
+
+bool HttpRequest::parseBody(ParseContext& context) {
     if (isMultipartFormData()) {
         MultipartFormDataParser multipartFormDataParser;
         const auto& contentType = headers_[HttpHeader::CONTENT_TYPE];
@@ -349,7 +359,7 @@ bool HttpRequest::parseBody() {
             return false;
         }
         multipartFormDataParser.setBoundary(std::move(boundary));
-        return multipartFormDataParser.parse(buffer_, *this);
+        return multipartFormDataParser.parse(buffer_, *this, context);
     } else {
         auto contentLength = headers_[HttpHeader::CONTENT_LENGTH];
         if (contentLength.empty()) {

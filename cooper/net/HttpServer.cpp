@@ -1,5 +1,6 @@
 #include "HttpServer.hpp"
 
+#include "TcpConnectionImpl.hpp"
 #include "cooper/util/Utilities.hpp"
 
 namespace cooper {
@@ -9,6 +10,7 @@ HttpServer::HttpServer(uint16_t port) {
     InetAddress addr(port);
     server_ = std::make_shared<TcpServer>(loopThread_.getLoop(), addr, "HttpServer");
 }
+
 void HttpServer::start(int loopNum) {
     server_->setRecvMessageCallback(
         std::bind(&HttpServer::recvMsgCallback, this, std::placeholders::_1, std::placeholders::_2));
@@ -23,10 +25,6 @@ void HttpServer::start(int loopNum) {
     server_->kickoffIdleConnections(KEEP_ALIVE_TIMEOUT);
     server_->start();
     loopThread_.wait();
-}
-
-void HttpServer::stop() {
-    server_->stop();
 }
 
 void HttpServer::addEndpoint(const std::string& method, const std::string& path, const cooper::HttpHandler& handler) {
@@ -79,8 +77,9 @@ void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer
     HttpResponse response;
     request.conn_ = conn;
     request.buffer_ = buffer;
-    LOG_DEBUG << "recv msg: \n" << std::string(buffer->peek(), buffer->readableBytes());
-    if (!request.parseRequestStartingLine() || !request.parseHeaders() || !request.parseBody()) {
+    ParseContext context;
+    context.socketPtr = std::dynamic_pointer_cast<TcpConnectionImpl>(conn)->socketPtr_;
+    if (!request.parseRequestStartingLine() || !request.parseHeaders() || !request.parseBody(context)) {
         response.statusCode_ = HttpStatus::CODE_400;
         sendResponse(conn, response);
         conn->forceClose();

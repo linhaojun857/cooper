@@ -1,6 +1,7 @@
 #ifndef net_Http_hpp
 #define net_Http_hpp
 
+#include <cooper/net/Socket.hpp>
 #include <cooper/net/TcpConnection.hpp>
 #include <set>
 #include <string>
@@ -8,8 +9,7 @@
 
 #define COOPER_VERSION "1.0"
 #define KEEP_ALIVE_TIMEOUT 60
-// 3 is a tested number
-#define MAX_KEEP_ALIVE_REQUESTS 3
+#define MAX_KEEP_ALIVE_REQUESTS 10
 
 namespace cooper {
 
@@ -418,13 +418,27 @@ struct ci {
     bool operator()(const std::string& s1, const std::string& s2) const {
         return std::lexicographical_compare(s1.begin(), s1.end(), s2.begin(), s2.end(),
                                             [](unsigned char c1, unsigned char c2) {
-                                                return ::tolower(c1) < ::tolower(c2);
+                                                return std::tolower(c1) == std::tolower(c2);
                                             });
     }
 };
 
+struct hash {
+    size_t operator()(const std::string& str) const {
+        std::string lowerStr = str;
+        for (char& c : lowerStr) {
+            c = static_cast<char>(std::tolower(c));
+        }
+        return std::hash<std::string>{}(lowerStr);
+    }
+};
+
+struct ParseContext {
+    std::shared_ptr<Socket> socketPtr;
+};
+
 using HttpPath = std::string;
-using Headers = std::map<std::string, std::string, ci>;
+using Headers = std::unordered_map<std::string, std::string, hash, ci>;
 using Body = std::string;
 
 class HttpRequest;
@@ -444,7 +458,7 @@ public:
 
     void setBoundary(std::string&& boundary);
 
-    bool parse(MsgBuffer* buffer, HttpRequest& request);
+    bool parse(MsgBuffer* buffer, HttpRequest& request, ParseContext& context);
 
 private:
     void clearFileInfo();
@@ -464,12 +478,15 @@ private:
 class HttpRequest {
     friend class HttpServer;
 
+public:
+    std::string getHeaderValue(const std::string& key) const;
+
 private:
     bool parseRequestStartingLine();
 
     bool parseHeaders();
 
-    bool parseBody();
+    bool parseBody(ParseContext& context);
 
     bool isMultipartFormData();
 

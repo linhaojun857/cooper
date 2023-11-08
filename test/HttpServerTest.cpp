@@ -1,3 +1,5 @@
+#include <fcntl.h>
+
 #include <cooper/net/HttpServer.hpp>
 #include <cooper/util/AsyncLogWriter.hpp>
 #include <dbng.hpp>
@@ -148,6 +150,30 @@ int main() {
                      << "name: " << item.second.name << "\n"
                      << "content: " << item.second.content << "\n"
                      << "filename: " << item.second.filename << "\n";
+        }
+        json j_resp;
+        j_resp["code"] = 200;
+        j_resp["msg"] = "success";
+        resp.body_ = j_resp.dump();
+    });
+    server.addEndpoint("POST", "/uploadFile", [](const HttpRequest& req, HttpResponse& resp) {
+        LOG_DEBUG << "content-length: " << req.getHeaderValue("content-length");
+        for (const auto& item : req.files) {
+            LOG_DEBUG << "\n"
+                      << "name: " << item.second.name << "\n"
+                      << "filename: " << item.second.filename << "\n"
+                      << "fileSize: " << item.second.content.size() << "\n";
+        }
+        auto iter = req.files.find("test_file");
+        if (iter != req.files.end()) {
+            std::string filename = "/home/linhaojun/cpp-code/cooper/test/static/" + iter->second.filename;
+            int fd = open(filename.c_str(), O_CREAT | O_WRONLY, 0644);
+            if (fd < 0) {
+                LOG_ERROR << "open file failed";
+                return;
+            }
+            write(fd, iter->second.content.data(), iter->second.content.size());
+            close(fd);
         }
         json j_resp;
         j_resp["code"] = 200;
