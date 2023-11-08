@@ -167,7 +167,7 @@ int main() {
         auto iter = req.files.find("test_file");
         if (iter != req.files.end()) {
             std::string filename = "/home/linhaojun/cpp-code/cooper/test/static/" + iter->second.filename;
-            int fd = open(filename.c_str(), O_CREAT | O_WRONLY, 0644);
+            int fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
             if (fd < 0) {
                 LOG_ERROR << "open file failed";
                 return;

@@ -315,6 +315,13 @@ public:
         tail_ -= offset;
     }
 
+    const char* begin() const {
+        return &buffer_[0];
+    }
+    char* begin() {
+        return &buffer_[0];
+    }
+
     /**
      * @brief Access a byte in the buffer.
      *
@@ -335,12 +342,6 @@ private:
     size_t initCap_;
     std::vector<char> buffer_;
     size_t tail_;
-    const char* begin() const {
-        return &buffer_[0];
-    }
-    char* begin() {
-        return &buffer_[0];
-    }
 };
 
 inline void swap(MsgBuffer& one, MsgBuffer& two) noexcept {

@@ -129,15 +129,43 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
     MultipartFormDataMap::iterator cur;
     auto begin = buffer->peek();
     auto contentLengthStr = request.headers_[HttpHeader::CONTENT_LENGTH];
-    int contentLength = -1;
+    size_t contentLength = -1;
     if (!contentLengthStr.empty()) {
         contentLength = std::stoi(contentLengthStr);
     }
-    while (buffer->readableBytes() > 0) {
+    bool needToReadMore = false;
+    int sockfd = context.socketPtr->fd();
+    auto readMore = std::function<int()>([buffer, sockfd, &needToReadMore]() {
+        int err;
+        ssize_t n = buffer->readFd(sockfd, &err);
+        if (n < 0) {
+            if (errno == EPIPE || errno == ECONNRESET) {
+                LOG_TRACE << "EPIPE or ECONNRESET, errno=" << errno << " fd=" << sockfd;
+            }
+            if (errno == EAGAIN) {
+                LOG_TRACE << "EAGAIN, errno=" << errno << " fd=" << sockfd;
+                return 2;
+            }
+            LOG_SYSERR << "read socket error";
+            return -1;
+        }
+        needToReadMore = false;
+        return 1;
+    });
+    while (true) {
+        if (needToReadMore) {
+            auto ret = readMore();
+            if (ret == -1) {
+                break;
+            }
+            if (ret == 2) {
+                continue;
+            }
+        }
         switch (state_) {
             case 0: {
                 if (buffer->readableBytes() < dashBoundaryCrlf_.size()) {
-                    return true;
+                    continue;
                 }
                 auto dashBoundaryCrlf = buffer->find(dashBoundaryCrlf_);
                 if (!dashBoundaryCrlf) {
@@ -153,6 +181,10 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                 break;
             }
             case 2: {
+                if (buffer->readableBytes() < crlf_.size()) {
+                    needToReadMore = true;
+                    continue;
+                }
                 auto crlf = buffer->find(crlf_);
                 while (crlf) {
                     if (crlf == buffer->peek()) {
@@ -191,13 +223,14 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                     crlf = buffer->find(crlf_);
                 }
                 if (state_ != 3) {
-                    return true;
+                    return false;
                 }
                 break;
             }
             case 3: {
                 if (buffer->readableBytes() < crlfDashBoundary_.size()) {
-                    return true;
+                    needToReadMore = true;
+                    continue;
                 }
                 auto crlfDashBoundary = buffer->find(crlfDashBoundary_);
                 if (crlfDashBoundary) {
@@ -219,14 +252,14 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                         content.append(buffer->peek(), len);
                         buffer->retrieve(len);
                     }
-                    int* err;
-                    buffer->readFd(context.socketPtr->fd(), err);
+                    needToReadMore = true;
                 }
                 break;
             }
             case 4: {
                 if (buffer->readableBytes() < crlf_.size()) {
-                    return true;
+                    needToReadMore = true;
+                    continue;
                 }
                 auto crlf = buffer->find(crlf_);
                 if (crlf == buffer->peek()) {
@@ -234,7 +267,8 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                     state_ = 1;
                 } else {
                     if (buffer->readableBytes() < dash_.size()) {
-                        return true;
+                        needToReadMore = true;
+                        continue;
                     }
                     auto dash = buffer->find(dash_);
                     if (dash == buffer->peek()) {
@@ -244,15 +278,16 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                         } else {
                             buffer->retrieveAll();
                         }
-                    } else {
                         return true;
+                    } else {
+                        return false;
                     }
                 }
                 break;
             }
         }
     }
-    return true;
+    return false;
 }
 
 void MultipartFormDataParser::clearFileInfo() {
