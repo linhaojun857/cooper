@@ -145,25 +145,21 @@ int main() {
         resp.body_ = j_resp.dump();
     });
     server.addEndpoint("POST", "/testMultiPart", [](const HttpRequest& req, HttpResponse& resp) {
-        for (const auto& item : req.files_) {
-            LOG_INFO << "\n"
-                     << "name: " << item.second.name << "\n"
-                     << "content: " << item.second.content << "\n"
-                     << "filename: " << item.second.filename << "\n";
-        }
+        const auto& data = req.getMultiPartFormData("test_name");
+        LOG_INFO << "\n"
+                 << "name: " << data.name << "\n"
+                 << "content: " << data.content << "\n";
         json j_resp;
         j_resp["code"] = 200;
         j_resp["msg"] = "success";
         resp.body_ = j_resp.dump();
     });
     server.addEndpoint("POST", "/uploadFile", [](const HttpRequest& req, HttpResponse& resp) {
-        LOG_DEBUG << "content-length: " << req.getHeaderValue("content-length");
-        for (const auto& item : req.files_) {
-            LOG_DEBUG << "\n"
-                      << "name: " << item.second.name << "\n"
-                      << "filename: " << item.second.filename << "\n"
-                      << "fileSize: " << item.second.content.size() << "\n";
-        }
+        const auto& fileData = req.getMultiPartFormData("test_file");
+        LOG_DEBUG << "\n"
+                  << "name: " << fileData.name << "\n"
+                  << "filename: " << fileData.filename << "\n"
+                  << "fileSize: " << fileData.content.size() << "\n";
         auto iter = req.files_.find("test_file");
         if (iter != req.files_.end()) {
             std::string filename = "/home/linhaojun/cpp-code/cooper/test/static/" + iter->second.filename;
