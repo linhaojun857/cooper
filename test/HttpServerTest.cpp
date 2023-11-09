@@ -145,7 +145,7 @@ int main() {
         resp.body_ = j_resp.dump();
     });
     server.addEndpoint("POST", "/testMultiPart", [](const HttpRequest& req, HttpResponse& resp) {
-        for (const auto& item : req.files) {
+        for (const auto& item : req.files_) {
             LOG_INFO << "\n"
                      << "name: " << item.second.name << "\n"
                      << "content: " << item.second.content << "\n"
@@ -158,14 +158,14 @@ int main() {
     });
     server.addEndpoint("POST", "/uploadFile", [](const HttpRequest& req, HttpResponse& resp) {
         LOG_DEBUG << "content-length: " << req.getHeaderValue("content-length");
-        for (const auto& item : req.files) {
+        for (const auto& item : req.files_) {
             LOG_DEBUG << "\n"
                       << "name: " << item.second.name << "\n"
                       << "filename: " << item.second.filename << "\n"
                       << "fileSize: " << item.second.content.size() << "\n";
         }
-        auto iter = req.files.find("test_file");
-        if (iter != req.files.end()) {
+        auto iter = req.files_.find("test_file");
+        if (iter != req.files_.end()) {
             std::string filename = "/home/linhaojun/cpp-code/cooper/test/static/" + iter->second.filename;
             int fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
             if (fd < 0) {

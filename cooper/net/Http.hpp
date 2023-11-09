@@ -481,6 +481,8 @@ class HttpRequest {
 public:
     std::string getHeaderValue(const std::string& key) const;
 
+    const MultipartFormData& getMultiPartFormData(const std::string& name) const;
+
 private:
     bool parseRequestStartingLine();
 
@@ -496,7 +498,7 @@ public:
     std::string version_;
     Headers headers_;
     Body body_;
-    MultipartFormDataMap files;
+    MultipartFormDataMap files_;
 
 private:
     TcpConnectionPtr conn_;

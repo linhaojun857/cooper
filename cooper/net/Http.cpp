@@ -131,7 +131,7 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
     auto contentLengthStr = request.headers_[HttpHeader::CONTENT_LENGTH];
     size_t contentLength = -1;
     if (!contentLengthStr.empty()) {
-        contentLength = std::stoi(contentLengthStr);
+        contentLength = std::stoul(contentLengthStr);
     }
     bool needToReadMore = false;
     int sockfd = context.socketPtr->fd();
@@ -188,7 +188,7 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                 auto crlf = buffer->find(crlf_);
                 while (crlf) {
                     if (crlf == buffer->peek()) {
-                        cur = request.files.emplace(file_.name, file_);
+                        cur = request.files_.emplace(file_.name, file_);
                         buffer->retrieve(crlf_.size());
                         state_ = 3;
                         break;
@@ -381,6 +381,15 @@ std::string HttpRequest::getHeaderValue(const std::string& key) const {
     auto iter = headers_.find(key);
     if (iter == headers_.end()) {
         return "";
+    }
+    return iter->second;
+}
+
+const MultipartFormData& HttpRequest::getMultiPartFormData(const std::string& name) const {
+    static const MultipartFormData emptyMultiPartFormData;
+    auto iter = files_.find(name);
+    if (iter == files_.end()) {
+        return emptyMultiPartFormData;
     }
     return iter->second;
 }
