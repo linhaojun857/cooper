@@ -139,15 +139,14 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
         int err;
         ssize_t n = buffer->readFd(sockfd, &err);
         if (n < 0) {
-            if (errno == EPIPE || errno == ECONNRESET) {
-                LOG_TRACE << "EPIPE or ECONNRESET, errno=" << errno << " fd=" << sockfd;
-            }
             if (errno == EAGAIN) {
-                LOG_TRACE << "EAGAIN, errno=" << errno << " fd=" << sockfd;
+                // LOG_TRACE << "EAGAIN, errno=" << errno << " fd=" << sockfd;
                 return 2;
             }
-            LOG_SYSERR << "read socket error";
-            return -1;
+            if (errno == EPIPE || errno == ECONNRESET) {
+                LOG_TRACE << "EPIPE or ECONNRESET, errno=" << errno << " fd=" << sockfd;
+                return -1;
+            }
         }
         needToReadMore = false;
         return 1;
