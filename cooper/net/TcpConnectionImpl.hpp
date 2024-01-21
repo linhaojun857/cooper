@@ -24,6 +24,7 @@ class TcpConnectionImpl : public TcpConnection,
     friend class TcpClient;
     friend class AppTcpServer;
     friend class HttpServer;
+    friend class HttpRequest;
     friend void cooper::removeConnection(EventLoop* loop, const TcpConnectionPtr& conn);
 
 public:

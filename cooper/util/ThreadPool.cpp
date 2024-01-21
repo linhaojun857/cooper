@@ -37,10 +37,10 @@ void ThreadPool::func(int threadNum) {
         std::function<void()> r;
         {
             std::unique_lock<std::mutex> lock(taskMutex_);
-            while (!stop_ && taskQueue_.size() == 0) {
+            while (!stop_ && taskQueue_.empty()) {
                 taskCond_.wait(lock);
             }
-            if (taskQueue_.size() > 0) {
+            if (!taskQueue_.empty()) {
                 LOG_TRACE << "get a new task!";
                 r = std::move(taskQueue_.front());
                 taskQueue_.pop();

@@ -15,7 +15,7 @@ int main() {
             LOG_INFO << "task " << i << " is running";
         });
     }
-    while (true) {
+    while (pool.getTaskCount() > 0) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }

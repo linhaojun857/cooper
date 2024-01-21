@@ -77,9 +77,7 @@ void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer
     HttpResponse response;
     request.conn_ = conn;
     request.buffer_ = buffer;
-    ParseContext context;
-    context.socketPtr = std::dynamic_pointer_cast<TcpConnectionImpl>(conn)->socketPtr_;
-    if (!request.parseRequestStartingLine() || !request.parseHeaders() || !request.parseBody(context)) {
+    if (!request.parseRequestStartingLine() || !request.parseHeaders() || !request.parseBody()) {
         response.statusCode_ = HttpStatus::CODE_400;
         sendResponse(conn, response);
         conn->forceClose();
@@ -113,7 +111,7 @@ void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer
     }
 }
 
-void HttpServer::handleRequest(const HttpRequest& request, HttpResponse& response) {
+void HttpServer::handleRequest(HttpRequest& request, HttpResponse& response) {
     LOG_TRACE << "method: " << request.method_ << ", path: " << request.path_;
     if (request.method_ == "GET") {
         auto it = getRoutes_.find(request.path_);

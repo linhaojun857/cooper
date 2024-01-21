@@ -11,6 +11,8 @@ using TimerCallback = std::function<void()>;
 // the data has been read to (buf, len)
 class TcpConnection;
 class MsgBuffer;
+class MultipartFormData;
+
 using TcpConnectionPtr = std::shared_ptr<TcpConnection>;
 // tcp server and connection callback
 using RecvMessageCallback = std::function<void(const TcpConnectionPtr&, MsgBuffer*)>;
@@ -22,6 +24,7 @@ using HighWaterMarkCallback = std::function<void(const TcpConnectionPtr&, const 
 using SSLErrorCallback = std::function<void(SSLError)>;
 using SockOptCallback = std::function<void(int)>;
 using FileAuthCallback = std::function<bool(const std::string&)>;
+using MultiPartWriteCallback = std::function<void(MultipartFormData, const char*, size_t, int)>;
 
 }  // namespace cooper
 

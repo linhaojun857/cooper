@@ -433,10 +433,6 @@ struct hash {
     }
 };
 
-struct ParseContext {
-    std::shared_ptr<Socket> socketPtr;
-};
-
 using HttpPath = std::string;
 using Headers = std::unordered_map<std::string, std::string, hash, ci>;
 using Body = std::string;
@@ -445,23 +441,30 @@ class HttpRequest;
 
 struct MultipartFormData {
     std::string name;
-    std::string content;
     std::string filename;
     std::string contentType;
 };
 
 using MultipartFormDataMap = std::multimap<std::string, MultipartFormData>;
+using MultiPartWriteCallbackMap = std::unordered_map<std::string, MultiPartWriteCallback>;
+
+#define FLAG_FILENAME 1
+#define FLAG_CONTENT 2
 
 class MultipartFormDataParser {
+    friend class HttpRequest;
+
 public:
     MultipartFormDataParser() = default;
 
     void setBoundary(std::string&& boundary);
 
-    bool parse(MsgBuffer* buffer, HttpRequest& request, ParseContext& context);
+    bool parse(HttpRequest& request, const MultiPartWriteCallbackMap& writeCallbackMap);
 
 private:
     void clearFileInfo();
+
+    void setBuffer(MsgBuffer* buffer);
 
     static bool startWithCaseIgnore(const std::string& a, const std::string& b);
 
@@ -473,24 +476,28 @@ private:
 
     size_t state_ = 0;
     MultipartFormData file_;
+    MsgBuffer* buffer_ = nullptr;
 };
 
 class HttpRequest {
     friend class HttpServer;
+    friend class MultipartFormDataParser;
 
 public:
     std::string getHeaderValue(const std::string& key) const;
 
-    const MultipartFormData& getMultiPartFormData(const std::string& name) const;
+    bool parseMultiPartFormData(const MultiPartWriteCallbackMap& writeCallbackMap);
 
 private:
     bool parseRequestStartingLine();
 
     bool parseHeaders();
 
-    bool parseBody(ParseContext& context);
+    bool parseBody();
 
     bool isMultipartFormData();
+
+    int getSockfd() const;
 
 public:
     std::string method_;
@@ -498,11 +505,11 @@ public:
     std::string version_;
     Headers headers_;
     Body body_;
-    MultipartFormDataMap files_;
 
 private:
     TcpConnectionPtr conn_;
     MsgBuffer* buffer_;
+    MultipartFormDataParser multipartFormDataParser_;
 };
 
 class HttpResponse;
@@ -543,7 +550,7 @@ private:
     HttpContentWriter::Ptr contentWriter_;
 };
 
-using HttpHandler = std::function<void(const HttpRequest&, HttpResponse&)>;
+using HttpHandler = std::function<void(HttpRequest&, HttpResponse&)>;
 using HttpRoutes = std::unordered_map<HttpPath, HttpHandler>;
 }  // namespace cooper
 

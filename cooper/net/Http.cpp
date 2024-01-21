@@ -2,6 +2,7 @@
 
 #include <regex>
 
+#include "TcpConnectionImpl.hpp"
 #include "cooper/util/Logger.hpp"
 #include "cooper/util/Utilities.hpp"
 
@@ -125,19 +126,12 @@ void MultipartFormDataParser::setBoundary(std::string&& boundary) {
     crlfDashBoundary_ = crlf_ + dash_ + boundary_;
 }
 
-bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpRequest& request, ParseContext& context) {
-    MultipartFormDataMap::iterator cur;
-    auto begin = buffer->peek();
-    auto contentLengthStr = request.headers_[HttpHeader::CONTENT_LENGTH];
-    size_t contentLength = -1;
-    if (!contentLengthStr.empty()) {
-        contentLength = std::stoul(contentLengthStr);
-    }
+bool MultipartFormDataParser::parse(cooper::HttpRequest& request, const MultiPartWriteCallbackMap& writeCallbackMap) {
     bool needToReadMore = false;
-    int sockfd = context.socketPtr->fd();
-    auto readMore = std::function<int()>([buffer, sockfd, &needToReadMore]() {
+    int sockfd = request.getSockfd();
+    auto readMore = std::function<int()>([this, sockfd, &needToReadMore]() {
         int err;
-        ssize_t n = buffer->readFd(sockfd, &err);
+        ssize_t n = buffer_->readFd(sockfd, &err);
         if (n < 0) {
             if (errno == EAGAIN) {
                 // LOG_TRACE << "EAGAIN, errno=" << errno << " fd=" << sockfd;
@@ -163,14 +157,14 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
         }
         switch (state_) {
             case 0: {
-                if (buffer->readableBytes() < dashBoundaryCrlf_.size()) {
+                if (buffer_->readableBytes() < dashBoundaryCrlf_.size()) {
                     continue;
                 }
-                auto dashBoundaryCrlf = buffer->find(dashBoundaryCrlf_);
+                auto dashBoundaryCrlf = buffer_->find(dashBoundaryCrlf_);
                 if (!dashBoundaryCrlf) {
                     return false;
                 }
-                buffer->retrieveUntil(dashBoundaryCrlf + dashBoundaryCrlf_.size());
+                buffer_->retrieveUntil(dashBoundaryCrlf + dashBoundaryCrlf_.size());
                 state_ = 1;
                 break;
             }
@@ -180,20 +174,19 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                 break;
             }
             case 2: {
-                if (buffer->readableBytes() < crlf_.size()) {
+                if (buffer_->readableBytes() < crlf_.size()) {
                     needToReadMore = true;
                     continue;
                 }
-                auto crlf = buffer->find(crlf_);
+                auto crlf = buffer_->find(crlf_);
                 while (crlf) {
-                    if (crlf == buffer->peek()) {
-                        cur = request.files_.emplace(file_.name, file_);
-                        buffer->retrieve(crlf_.size());
+                    if (crlf == buffer_->peek()) {
+                        buffer_->retrieve(crlf_.size());
                         state_ = 3;
                         break;
                     }
                     static const std::string headerName = "content-type:";
-                    const auto header = std::string(buffer->peek(), crlf - buffer->peek());
+                    const auto header = std::string(buffer_->peek(), crlf - buffer_->peek());
                     if (startWithCaseIgnore(header, headerName)) {
                         file_.contentType = utils::trimCopy(header.substr(headerName.size()));
                     } else {
@@ -218,8 +211,12 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                             return false;
                         }
                     }
-                    buffer->retrieve(crlf - buffer->peek() + crlf_.size());
-                    crlf = buffer->find(crlf_);
+                    buffer_->retrieve(crlf - buffer_->peek() + crlf_.size());
+                    crlf = buffer_->find(crlf_);
+                    auto iter = writeCallbackMap.find(file_.name);
+                    if (iter != writeCallbackMap.end()) {
+                        iter->second(file_, nullptr, 0, FLAG_FILENAME);
+                    }
                 }
                 if (state_ != 3) {
                     return false;
@@ -227,56 +224,49 @@ bool MultipartFormDataParser::parse(cooper::MsgBuffer* buffer, cooper::HttpReque
                 break;
             }
             case 3: {
-                if (buffer->readableBytes() < crlfDashBoundary_.size()) {
+                if (buffer_->readableBytes() < crlfDashBoundary_.size()) {
                     needToReadMore = true;
                     continue;
                 }
-                auto crlfDashBoundary = buffer->find(crlfDashBoundary_);
+                auto crlfDashBoundary = buffer_->find(crlfDashBoundary_);
                 if (crlfDashBoundary) {
-                    auto len = crlfDashBoundary - buffer->peek();
-                    auto& content = cur->second.content;
-                    if (content.size() + len > content.max_size()) {
-                        return false;
+                    auto len = crlfDashBoundary - buffer_->peek();
+                    auto iter = writeCallbackMap.find(file_.name);
+                    if (iter != writeCallbackMap.end()) {
+                        iter->second(file_, buffer_->peek(), len, FLAG_CONTENT);
                     }
-                    content.append(buffer->peek(), len);
-                    buffer->retrieve(len + crlfDashBoundary_.size());
+                    buffer_->retrieve(len + crlfDashBoundary_.size());
                     state_ = 4;
                 } else {
-                    auto len = buffer->readableBytes() - crlfDashBoundary_.size();
+                    auto len = buffer_->readableBytes() - crlfDashBoundary_.size();
                     if (len > 0) {
-                        auto& content = cur->second.content;
-                        if (content.size() + len > content.max_size()) {
-                            return false;
+                        auto iter = writeCallbackMap.find(file_.name);
+                        if (iter != writeCallbackMap.end()) {
+                            iter->second(file_, buffer_->peek(), len, FLAG_CONTENT);
                         }
-                        content.append(buffer->peek(), len);
-                        buffer->retrieve(len);
+                        buffer_->retrieve(len);
                     }
                     needToReadMore = true;
                 }
                 break;
             }
             case 4: {
-                if (buffer->readableBytes() < crlf_.size()) {
+                if (buffer_->readableBytes() < crlf_.size()) {
                     needToReadMore = true;
                     continue;
                 }
-                auto crlf = buffer->find(crlf_);
-                if (crlf == buffer->peek()) {
-                    buffer->retrieve(crlf_.size());
+                auto crlf = buffer_->find(crlf_);
+                if (crlf == buffer_->peek()) {
+                    buffer_->retrieve(crlf_.size());
                     state_ = 1;
                 } else {
-                    if (buffer->readableBytes() < dash_.size()) {
+                    if (buffer_->readableBytes() < dash_.size()) {
                         needToReadMore = true;
                         continue;
                     }
-                    auto dash = buffer->find(dash_);
-                    if (dash == buffer->peek()) {
-                        buffer->retrieve(dash_.size());
-                        if (contentLength != -1) {
-                            buffer->retrieve(contentLength - (buffer->peek() - begin));
-                        } else {
-                            buffer->retrieveAll();
-                        }
+                    auto dash = buffer_->find(dash_);
+                    if (dash == buffer_->peek()) {
+                        buffer_->retrieveAll();
                         return true;
                     } else {
                         return false;
@@ -293,6 +283,10 @@ void MultipartFormDataParser::clearFileInfo() {
     file_.name.clear();
     file_.filename.clear();
     file_.contentType.clear();
+}
+
+void MultipartFormDataParser::setBuffer(cooper::MsgBuffer* buffer) {
+    buffer_ = buffer;
 }
 
 bool MultipartFormDataParser::startWithCaseIgnore(const std::string& a, const std::string& b) {
@@ -384,25 +378,20 @@ std::string HttpRequest::getHeaderValue(const std::string& key) const {
     return iter->second;
 }
 
-const MultipartFormData& HttpRequest::getMultiPartFormData(const std::string& name) const {
-    static const MultipartFormData emptyMultiPartFormData;
-    auto iter = files_.find(name);
-    if (iter == files_.end()) {
-        return emptyMultiPartFormData;
-    }
-    return iter->second;
+bool HttpRequest::parseMultiPartFormData(const cooper::MultiPartWriteCallbackMap& writeCallbackMap) {
+    multipartFormDataParser_.setBuffer(buffer_);
+    return multipartFormDataParser_.parse(*this, writeCallbackMap);
 }
 
-bool HttpRequest::parseBody(ParseContext& context) {
+bool HttpRequest::parseBody() {
     if (isMultipartFormData()) {
-        MultipartFormDataParser multipartFormDataParser;
         const auto& contentType = headers_[HttpHeader::CONTENT_TYPE];
         std::string boundary;
         if (!parseMultipartBoundary(contentType, boundary)) {
             return false;
         }
-        multipartFormDataParser.setBoundary(std::move(boundary));
-        return multipartFormDataParser.parse(buffer_, *this, context);
+        multipartFormDataParser_.setBoundary(std::move(boundary));
+        return true;
     } else {
         auto contentLength = headers_[HttpHeader::CONTENT_LENGTH];
         if (contentLength.empty()) {
@@ -426,6 +415,10 @@ bool HttpRequest::isMultipartFormData() {
     }
     const auto& contentType = iter->second;
     return !contentType.rfind("multipart/form-data", 0);
+}
+
+int HttpRequest::getSockfd() const {
+    return std::dynamic_pointer_cast<TcpConnectionImpl>(conn_)->socketPtr_->fd();
 }
 
 void HttpContentWriter::write(const cooper::TcpConnectionPtr& conn) {

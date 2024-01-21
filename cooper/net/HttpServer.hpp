@@ -59,7 +59,7 @@ public:
 private:
     void recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer);
 
-    void handleRequest(const HttpRequest& request, HttpResponse& response);
+    void handleRequest(HttpRequest& request, HttpResponse& response);
 
     bool handleFileRequest(const HttpRequest& request, HttpResponse& response);
 

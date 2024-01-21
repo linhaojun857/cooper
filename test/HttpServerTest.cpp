@@ -49,7 +49,7 @@ int main() {
         return true;
     });
     server.addMountPoint("/static/", "/home/linhaojun/cpp-code/cooper/test/static", headers);
-    server.addEndpoint("GET", "/hello", [](const HttpRequest& req, HttpResponse& resp) {
+    server.addEndpoint("GET", "/hello", [](HttpRequest& req, HttpResponse& resp) {
         resp.body_ =
             "<html>"
             "   <body>"
@@ -57,7 +57,7 @@ int main() {
             "   </body>"
             "</html>";
     });
-    server.addEndpoint("POST", "/person/add", [&mysql](const HttpRequest& req, HttpResponse& resp) {
+    server.addEndpoint("POST", "/person/add", [&mysql](HttpRequest& req, HttpResponse& resp) {
         auto j = json::parse(req.body_);
         LOG_INFO << "json: \n" << j.dump();
         Person p;
@@ -74,7 +74,7 @@ int main() {
         j_resp["msg"] = "success";
         resp.body_ = j_resp.dump();
     });
-    server.addEndpoint("POST", "/person/delete", [&mysql](const HttpRequest& req, HttpResponse& resp) {
+    server.addEndpoint("POST", "/person/delete", [&mysql](HttpRequest& req, HttpResponse& resp) {
         auto j = json::parse(req.body_);
         LOG_INFO << "json: \n" << j.dump();
         Person p;
@@ -90,7 +90,7 @@ int main() {
         j_resp["msg"] = "success";
         resp.body_ = j_resp.dump();
     });
-    server.addEndpoint("POST", "/person/update", [&mysql](const HttpRequest& req, HttpResponse& resp) {
+    server.addEndpoint("POST", "/person/update", [&mysql](HttpRequest& req, HttpResponse& resp) {
         auto j = json::parse(req.body_);
         LOG_INFO << "json: \n" << j.dump();
         Person p;
@@ -108,7 +108,7 @@ int main() {
         j_resp["msg"] = "success";
         resp.body_ = j_resp.dump();
     });
-    server.addEndpoint("GET", "/person", [&mysql](const HttpRequest& req, HttpResponse& resp) {
+    server.addEndpoint("GET", "/person", [&mysql](HttpRequest& req, HttpResponse& resp) {
         auto persons = mysql.query<Person>();
         json j_resp;
         j_resp["code"] = 200;
@@ -122,7 +122,7 @@ int main() {
         }
         resp.body_ = j_resp.dump();
     });
-    server.addEndpoint("GET", "/test1", [&mysql](const HttpRequest& req, HttpResponse& resp) {
+    server.addEndpoint("GET", "/test1", [&mysql](HttpRequest& req, HttpResponse& resp) {
         auto results = mysql.query<std::tuple<std::string, std::string>>(
             "SELECT\n"
             "\tperson.NAME AS person_name,\n"
@@ -144,33 +144,66 @@ int main() {
         }
         resp.body_ = j_resp.dump();
     });
-    server.addEndpoint("POST", "/testMultiPart", [](const HttpRequest& req, HttpResponse& resp) {
-        const auto& data = req.getMultiPartFormData("test_name");
-        LOG_INFO << "\n"
-                 << "name: " << data.name << "\n"
-                 << "content: " << data.content << "\n";
+    server.addEndpoint("POST", "/testMultiPart", [](HttpRequest& req, HttpResponse& resp) {
+        MultiPartWriteCallbackMap writeCallbacks;
+        std::string content;
+        writeCallbacks["test_name"] = [&](const MultipartFormData& file, const char* data, size_t len, int flag) {
+            if (flag == FLAG_CONTENT) {
+                content.append(data, len);
+            } else {
+                LOG_DEBUG << "error flag";
+            }
+        };
+        if (!req.parseMultiPartFormData(writeCallbacks)) {
+            LOG_ERROR << "parse multi part form data failed";
+            json j_resp;
+            j_resp["code"] = 500;
+            j_resp["msg"] = "error";
+            resp.body_ = j_resp.dump();
+            return;
+        }
+        LOG_DEBUG << "content: " << content;
         json j_resp;
         j_resp["code"] = 200;
         j_resp["msg"] = "success";
         resp.body_ = j_resp.dump();
     });
-    server.addEndpoint("POST", "/uploadFile", [](const HttpRequest& req, HttpResponse& resp) {
-        const auto& fileData = req.getMultiPartFormData("test_file");
-        LOG_DEBUG << "\n"
-                  << "name: " << fileData.name << "\n"
-                  << "filename: " << fileData.filename << "\n"
-                  << "fileSize: " << fileData.content.size() << "\n";
-        auto iter = req.files_.find("test_file");
-        if (iter != req.files_.end()) {
-            std::string filename = "/home/linhaojun/cpp-code/cooper/test/static/" + iter->second.filename;
-            int fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
-            if (fd < 0) {
-                LOG_ERROR << "open file failed";
-                return;
+    server.addEndpoint("POST", "/uploadFile", [](HttpRequest& req, HttpResponse& resp) {
+        MultiPartWriteCallbackMap writeCallbacks;
+        int fd;
+        std::string filename;
+        writeCallbacks["test_file"] = [&](const MultipartFormData& file, const char* data, size_t len, int flag) {
+            if (flag == FLAG_FILENAME) {
+                filename = "/home/linhaojun/cpp-code/cooper/test/static/" + file.filename;
+                fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
+                if (fd < 0) {
+                    LOG_ERROR << "open file failed";
+                    return;
+                }
+            } else if (flag == FLAG_CONTENT) {
+                write(fd, data, len);
+            } else {
+                LOG_DEBUG << "error flag";
             }
-            write(fd, iter->second.content.data(), iter->second.content.size());
+        };
+        if (!req.parseMultiPartFormData(writeCallbacks)) {
+            LOG_ERROR << "parse multi part form data failed";
+            if (access(filename.c_str(), F_OK) == 0) {
+                remove(filename.c_str());
+            }
+            if (fd > 0) {
+                close(fd);
+            }
+            json j_resp;
+            j_resp["code"] = 500;
+            j_resp["msg"] = "error";
+            resp.body_ = j_resp.dump();
+            return;
+        }
+        if (fd > 0) {
             close(fd);
         }
+        LOG_DEBUG << "filename: " << filename;
         json j_resp;
         j_resp["code"] = 200;
         j_resp["msg"] = "success";
