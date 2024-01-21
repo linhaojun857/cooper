@@ -181,7 +181,9 @@ int main() {
                     return;
                 }
             } else if (flag == FLAG_CONTENT) {
-                write(fd, data, len);
+                if (fd > 0) {
+                    write(fd, data, len);
+                }
             } else {
                 LOG_DEBUG << "error flag";
             }
