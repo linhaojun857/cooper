@@ -23,6 +23,14 @@ struct Course {
 };
 REFLECTION(Course, id, name)
 
+std::string getCurrentTime() {
+    time_t now = time(nullptr);
+    tm* tm = localtime(&now);
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm);
+    return buf;
+}
+
 int main() {
     AsyncLogWriter writer;
     Logger::setLogLevel(Logger::kTrace);
@@ -188,6 +196,7 @@ int main() {
                 LOG_DEBUG << "error flag";
             }
         };
+        LOG_DEBUG << "transfer begin time: " << getCurrentTime();
         if (!req.parseMultiPartFormData(writeCallbacks)) {
             LOG_ERROR << "parse multi part form data failed";
             if (access(filename.c_str(), F_OK) == 0) {
@@ -205,6 +214,7 @@ int main() {
         if (fd > 0) {
             close(fd);
         }
+        LOG_DEBUG << "transfer end time: " << getCurrentTime();
         LOG_DEBUG << "filename: " << filename;
         json j_resp;
         j_resp["code"] = 200;

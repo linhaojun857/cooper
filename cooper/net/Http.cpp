@@ -213,13 +213,13 @@ bool MultipartFormDataParser::parse(cooper::HttpRequest& request, const MultiPar
                     }
                     buffer_->retrieve(crlf - buffer_->peek() + crlf_.size());
                     crlf = buffer_->find(crlf_);
-                    auto iter = writeCallbackMap.find(file_.name);
-                    if (iter != writeCallbackMap.end()) {
-                        iter->second(file_, nullptr, 0, FLAG_FILENAME);
-                    }
                 }
                 if (state_ != 3) {
                     return false;
+                }
+                auto iter = writeCallbackMap.find(file_.name);
+                if (iter != writeCallbackMap.end()) {
+                    iter->second(file_, nullptr, 0, FLAG_FILENAME);
                 }
                 break;
             }
