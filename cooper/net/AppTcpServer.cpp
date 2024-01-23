@@ -20,6 +20,11 @@ AppTcpServer::~AppTcpServer() {
     LOG_TRACE << "AppTcpServer::~AppTcpServer...";
 }
 
+void AppTcpServer::setMode(ModeType mode) {
+    assert(mode == BUSINESS_MODE || mode == MEDIA_MODE);
+    mode_ = mode;
+}
+
 void AppTcpServer::start(int loopNum) {
     server_->setRecvMessageCallback(
         std::bind(&AppTcpServer::recvMsgCallback, this, std::placeholders::_1, std::placeholders::_2));
@@ -71,9 +76,14 @@ void AppTcpServer::stop() {
     server_->stop();
 }
 
-void AppTcpServer::registerProtocolHandler(cooper::AppTcpServer::protocolType header,
-                                           const cooper::AppTcpServer::Handler& handler) {
-    handlers_[header] = handler;
+void AppTcpServer::registerBusinessHandler(ProtocolType type, const BusinessHandler& handler) {
+    assert(mode_ == BUSINESS_MODE);
+    businessHandlers_[type] = handler;
+}
+
+void AppTcpServer::registerMediaHandler(ProtocolType type, const MediaHandler& handler) {
+    assert(mode_ == MEDIA_MODE);
+    mediaHandlers_[type] = handler;
 }
 
 void AppTcpServer::setConnectionCallback(const ConnectionCallback& cb) {
@@ -87,7 +97,14 @@ void AppTcpServer::resetPingPongEntry(const cooper::TcpConnectionPtr& connPtr) {
 }
 
 void AppTcpServer::recvMsgCallback(const cooper::TcpConnectionPtr& conn, cooper::MsgBuffer* buffer) {
-    LOG_TRACE << "recvMsgCallback";
+    if (mode_ == BUSINESS_MODE) {
+        recvBusinessMsgCallback(conn, buffer);
+    } else if (mode_ == MEDIA_MODE) {
+        recvMediaMsgCallback(conn, buffer);
+    }
+}
+
+void AppTcpServer::recvBusinessMsgCallback(const cooper::TcpConnectionPtr& conn, cooper::MsgBuffer* buffer) {
     auto packSize = *(static_cast<const uint32_t*>((void*)buffer->peek()));
     if (buffer->readableBytes() < packSize) {
         return;
@@ -95,13 +112,33 @@ void AppTcpServer::recvMsgCallback(const cooper::TcpConnectionPtr& conn, cooper:
         buffer->retrieve(sizeof(packSize));
         auto str = buffer->read(packSize);
         auto j = json::parse(str);
-        auto type = j["type"].get<protocolType>();
+        auto type = j["type"].get<ProtocolType>();
         if (type == PONG_TYPE && pingPong_) {
             resetPingPongEntry(conn);
         }
-        auto it = handlers_.find(type);
-        if (it != handlers_.end()) {
+        auto it = businessHandlers_.find(type);
+        if (it != businessHandlers_.end()) {
             it->second(conn, j);
+        } else {
+            LOG_ERROR << "no handler for protocol type:" << type;
+        }
+    }
+}
+
+void AppTcpServer::recvMediaMsgCallback(const cooper::TcpConnectionPtr& conn, cooper::MsgBuffer* buffer) {
+    auto packSize = *(static_cast<const uint32_t*>((void*)buffer->peek()));
+    if (buffer->readableBytes() < packSize) {
+        return;
+    } else {
+        buffer->retrieve(sizeof(packSize));
+        auto str = buffer->read(packSize);
+        auto type = *(static_cast<const ProtocolType*>((void*)str.c_str()));
+        if (type == PONG_TYPE && pingPong_) {
+            resetPingPongEntry(conn);
+        }
+        auto it = mediaHandlers_.find(type);
+        if (it != mediaHandlers_.end()) {
+            it->second(conn, str.c_str() + sizeof(type), packSize - sizeof(type));
         } else {
             LOG_ERROR << "no handler for protocol type:" << type;
         }

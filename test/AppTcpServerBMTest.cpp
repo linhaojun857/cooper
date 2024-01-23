@@ -21,6 +21,7 @@ int main() {
     Logger::setOutputFunction(std::bind(&AsyncLogWriter::write, &writer, std::placeholders::_1, std::placeholders::_2),
                               std::bind(&AsyncLogWriter::flushAll, &writer));
     AppTcpServer server;
+    server.setMode(BUSINESS_MODE);
     dbng<mysql> mysql;
     bool ret;
     ret = mysql.connect("172.18.48.1", "root", "20030802", "test");
@@ -35,7 +36,7 @@ int main() {
             LOG_DEBUG << "AppTcpServerTest connection disconnected";
         }
     });
-    server.registerProtocolHandler(TEST, [&mysql](const TcpConnectionPtr& conn, const json& j) {
+    server.registerBusinessHandler(TEST, [&mysql](const TcpConnectionPtr& conn, const json& j) {
         Person p;
         p.name = j["name"];
         p.age = j["age"];
