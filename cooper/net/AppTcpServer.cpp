@@ -138,7 +138,7 @@ void AppTcpServer::recvMediaMsgCallback(const cooper::TcpConnectionPtr& conn, co
         }
         auto it = mediaHandlers_.find(type);
         if (it != mediaHandlers_.end()) {
-            it->second(conn, str.c_str() + sizeof(type), packSize - sizeof(type));
+            it->second(conn, str.c_str(), packSize);
         } else {
             LOG_ERROR << "no handler for protocol type:" << type;
         }
