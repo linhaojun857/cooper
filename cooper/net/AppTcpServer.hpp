@@ -69,6 +69,12 @@ public:
      */
     void setConnectionCallback(const ConnectionCallback& cb);
 
+    /**
+     * set sock opt callback
+     * @param cb
+     */
+    void setSockOptCallback(const SockOptCallback& cb);
+
 private:
     static void resetPingPongEntry(const TcpConnectionPtr& connPtr);
 
@@ -88,6 +94,7 @@ private:
     std::unordered_map<TcpConnectionPtr, TimerId> timerIds_;
     std::shared_ptr<TimingWheel> timingWheel_;
     ConnectionCallback connectionCallback_;
+    SockOptCallback sockOptCallback_;
 };
 }  // namespace cooper
 

@@ -61,6 +61,7 @@ void AppTcpServer::start(int loopNum) {
             connectionCallback_(connPtr);
         }
     });
+    server_->setAfterAcceptSockOptCallback(sockOptCallback_);
     server_->setIoLoopNum(loopNum);
     if (pingPong_) {
         for (EventLoop* loop : server_->ioLoops_) {
@@ -88,6 +89,10 @@ void AppTcpServer::registerMediaHandler(ProtocolType type, const MediaHandler& h
 
 void AppTcpServer::setConnectionCallback(const ConnectionCallback& cb) {
     connectionCallback_ = cb;
+}
+
+void AppTcpServer::setSockOptCallback(const SockOptCallback& cb) {
+    sockOptCallback_ = cb;
 }
 
 void AppTcpServer::resetPingPongEntry(const cooper::TcpConnectionPtr& connPtr) {
