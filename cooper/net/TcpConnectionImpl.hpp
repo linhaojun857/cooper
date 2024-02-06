@@ -22,7 +22,6 @@ class TcpConnectionImpl : public TcpConnection,
                           public std::enable_shared_from_this<TcpConnectionImpl> {
     friend class TcpServer;
     friend class TcpClient;
-    friend class AppTcpServer;
     friend class HttpServer;
     friend class HttpRequest;
     friend void cooper::removeConnection(EventLoop* loop, const TcpConnectionPtr& conn);

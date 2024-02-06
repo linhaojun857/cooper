@@ -11,10 +11,10 @@ int main() {
     Logger::setOutputFunction(std::bind(&AsyncLogWriter::write, &writer, std::placeholders::_1, std::placeholders::_2),
                               std::bind(&AsyncLogWriter::flushAll, &writer));
 
-    AppTcpServer server;
-    server.setMode(MEDIA_MODE);
+    std::shared_ptr<AppTcpServer> server = std::make_shared<AppTcpServer>();
+    server->setMode(MEDIA_MODE);
 
-    server.setConnectionCallback([](const TcpConnectionPtr& connPtr) {
+    server->setConnectionCallback([](const TcpConnectionPtr& connPtr) {
         if (connPtr->connected()) {
             LOG_DEBUG << "AppTcpServerTest new connection";
         } else if (connPtr->disconnected()) {
@@ -22,10 +22,10 @@ int main() {
         }
     });
 
-    server.registerMediaHandler(TEST, [](const TcpConnectionPtr& conn, const char* buf, size_t len) {
+    server->registerMediaHandler(TEST, [](const TcpConnectionPtr& conn, const char* buf, size_t len) {
         LOG_DEBUG << "recv " << std::string(buf, len);
     });
 
-    server.start();
+    server->start();
     return 0;
 }

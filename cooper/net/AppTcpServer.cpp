@@ -7,7 +7,7 @@
 
 namespace cooper {
 
-AppTcpServer::AppTcpServer(uint16_t port, bool pingPong, double pingPongInterval, size_t pingPongTimeout) {
+AppTcpServer::AppTcpServer(uint16_t port, bool pingPong, size_t pingPongInterval, size_t pingPongTimeout) {
     loopThread_.run();
     InetAddress addr(port);
     pingPong_ = pingPong;
@@ -26,35 +26,38 @@ void AppTcpServer::setMode(ModeType mode) {
 }
 
 void AppTcpServer::start(int loopNum) {
-    server_->setRecvMessageCallback(
-        std::bind(&AppTcpServer::recvMsgCallback, this, std::placeholders::_1, std::placeholders::_2));
+    server_->setRecvMessageCallback([this](auto&& PH1, auto&& PH2) {
+        recvMsgCallback(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2));
+    });
     server_->setConnectionCallback([this](const TcpConnectionPtr& connPtr) {
         if (connPtr->connected()) {
-            LOG_DEBUG << "New connection";
+            LOG_DEBUG << "new connection";
             if (pingPong_) {
-                auto loop = connPtr->getLoop();
-                auto timingWheel = server_->timingWheelMap_[connPtr->getLoop()];
-                auto connImpPtr = std::dynamic_pointer_cast<TcpConnectionImpl>(connPtr);
-                connImpPtr->timingWheelWeakPtr_ = timingWheel;
-                // make sure Socket can be destructed successfully
-                std::weak_ptr<TcpConnection> connWeakPtr = connPtr;
-                auto timerId = loop->runEvery(pingPongInterval_, [this, timingWheel, connWeakPtr]() {
-                    auto connPtr = connWeakPtr.lock();
-                    json j;
-                    j["type"] = PING_TYPE;
-                    connPtr->sendJson(j);
-                    auto entry = std::make_shared<TcpConnectionImpl::KickoffEntry>(connPtr);
-                    std::dynamic_pointer_cast<TcpConnectionImpl>(connPtr)->kickoffEntry_ = entry;
-                    timingWheel->insertEntry(pingPongTimeout_, entry);
-                });
-                timerIds_[connPtr] = timerId;
+                auto pingPongEntry =
+                    std::make_shared<PingPongEntry>(pingPongInterval_, pingPongTimeout_, connPtr,
+                                                    timingWheelMap_[connPtr->getLoop()], shared_from_this());
+                timingWheelMap_[connPtr->getLoop()]->insertEntry(pingPongInterval_, pingPongEntry);
+                pingPongEntries_[connPtr] = pingPongEntry;
             }
         } else if (connPtr->disconnected()) {
             LOG_DEBUG << "connection disconnected";
             if (pingPong_) {
-                auto loop = connPtr->getLoop();
-                loop->invalidateTimer(timerIds_[connPtr]);
-                timerIds_.erase(connPtr);
+                auto it = pingPongEntries_.find(connPtr);
+                if (it != pingPongEntries_.end()) {
+                    auto pingPongEntry = it->second.lock();
+                    if (pingPongEntry) {
+                        pingPongEntry->reset();
+                    }
+                    pingPongEntries_.erase(it);
+                }
+                auto it2 = kickoffEntries_.find(connPtr);
+                if (it2 != kickoffEntries_.end()) {
+                    auto kickoffEntry = it2->second.lock();
+                    if (kickoffEntry) {
+                        kickoffEntry->reset();
+                    }
+                    kickoffEntries_.erase(it2);
+                }
             }
         }
         if (connectionCallback_) {
@@ -64,9 +67,11 @@ void AppTcpServer::start(int loopNum) {
     server_->setAfterAcceptSockOptCallback(sockOptCallback_);
     server_->setIoLoopNum(loopNum);
     if (pingPong_) {
-        for (EventLoop* loop : server_->ioLoops_) {
-            server_->timingWheelMap_[loop] = std::make_shared<TimingWheel>(
-                loop, pingPongTimeout_, 1.0F, pingPongTimeout_ < 500 ? pingPongTimeout_ + 1 : 100);
+        auto loops = server_->getIoLoops();
+        for (auto loop : loops) {
+            auto timingWheel = std::make_shared<TimingWheel>(loop, pingPongInterval_, 1.0F,
+                                                             pingPongInterval_ < 500 ? pingPongInterval_ + 1 : 100);
+            timingWheelMap_[loop] = timingWheel;
         }
     }
     server_->start();
@@ -74,6 +79,15 @@ void AppTcpServer::start(int loopNum) {
 }
 
 void AppTcpServer::stop() {
+    for (auto& iter : timingWheelMap_) {
+        std::promise<void> pro;
+        auto f = pro.get_future();
+        iter.second->getLoop()->runInLoop([&iter, &pro]() mutable {
+            iter.second.reset();
+            pro.set_value();
+        });
+        f.get();
+    }
     server_->stop();
 }
 
@@ -95,10 +109,15 @@ void AppTcpServer::setSockOptCallback(const SockOptCallback& cb) {
     sockOptCallback_ = cb;
 }
 
-void AppTcpServer::resetPingPongEntry(const cooper::TcpConnectionPtr& connPtr) {
-    auto connImpPtr = std::dynamic_pointer_cast<TcpConnectionImpl>(connPtr);
-    auto entry = connImpPtr->kickoffEntry_.lock();
-    entry->reset();
+void AppTcpServer::resetKickoffEntry(const cooper::TcpConnectionPtr& connPtr) {
+    auto it = kickoffEntries_.find(connPtr);
+    if (it != kickoffEntries_.end()) {
+        auto kickoffEntry = it->second.lock();
+        if (kickoffEntry) {
+            kickoffEntry->reset();
+        }
+        kickoffEntries_.erase(it);
+    }
 }
 
 void AppTcpServer::recvMsgCallback(const cooper::TcpConnectionPtr& conn, cooper::MsgBuffer* buffer) {
@@ -119,7 +138,8 @@ void AppTcpServer::recvBusinessMsgCallback(const cooper::TcpConnectionPtr& conn,
         auto j = json::parse(str);
         auto type = j["type"].get<ProtocolType>();
         if (type == PONG_TYPE && pingPong_) {
-            resetPingPongEntry(conn);
+            resetKickoffEntry(conn);
+            return;
         }
         auto it = businessHandlers_.find(type);
         if (it != businessHandlers_.end()) {
@@ -139,7 +159,8 @@ void AppTcpServer::recvMediaMsgCallback(const cooper::TcpConnectionPtr& conn, co
         auto str = buffer->read(packSize);
         auto type = *(static_cast<const ProtocolType*>((void*)str.c_str()));
         if (type == PONG_TYPE && pingPong_) {
-            resetPingPongEntry(conn);
+            resetKickoffEntry(conn);
+            return;
         }
         auto it = mediaHandlers_.find(type);
         if (it != mediaHandlers_.end()) {
