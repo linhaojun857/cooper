@@ -33,7 +33,7 @@ std::string getCurrentTime() {
 
 int main() {
     AsyncLogWriter writer;
-    Logger::setLogLevel(Logger::kTrace);
+    Logger::setLogLevel(Logger::kError);
     Logger::setOutputFunction(std::bind(&AsyncLogWriter::write, &writer, std::placeholders::_1, std::placeholders::_2),
                               std::bind(&AsyncLogWriter::flushAll, &writer));
     dbng<mysql> mysql;
@@ -51,6 +51,8 @@ int main() {
         "\tcourse_id INT\n"
         ");");
     HttpServer server;
+    server.setKeepAliveTimeout(60);
+    server.setMaxKeepAliveRequests(1000);
     Headers headers;
     server.setFileAuthCallback([](const std::string& path) {
         LOG_DEBUG << "file path: " << path;
@@ -221,6 +223,6 @@ int main() {
         j_resp["msg"] = "success";
         resp.body_ = j_resp.dump();
     });
-    server.start();
+    server.start(10);
     return 0;
 }

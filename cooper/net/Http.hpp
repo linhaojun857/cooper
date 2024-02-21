@@ -9,7 +9,7 @@
 
 #define COOPER_VERSION "1.0"
 #define KEEP_ALIVE_TIMEOUT 60
-#define MAX_KEEP_ALIVE_REQUESTS 10
+#define MAX_KEEP_ALIVE_REQUESTS 100
 
 namespace cooper {
 

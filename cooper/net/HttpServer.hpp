@@ -27,6 +27,18 @@ public:
     void stop();
 
     /**
+     * @brief set keep alive timeout
+     * @param timeout
+     */
+    void setKeepAliveTimeout(size_t timeout);
+
+    /**
+     * @brief set max keep alive requests
+     * @param maxKeepAliveRequests
+     */
+    void setMaxKeepAliveRequests(int maxKeepAliveRequests);
+
+    /**
      * @brief add end point
      * @param method
      * @param path
@@ -63,11 +75,13 @@ private:
 
     bool handleFileRequest(const HttpRequest& request, HttpResponse& response);
 
-    bool sendResponse(const TcpConnectionPtr& conn, HttpResponse& response);
+    bool sendResponse(const TcpConnectionPtr& conn, HttpResponse& response) const;
 
 private:
     EventLoopThread loopThread_;
     std::shared_ptr<TcpServer> server_;
+    size_t keepAliveTimeout_{KEEP_ALIVE_TIMEOUT};
+    int maxKeepAliveRequests_{MAX_KEEP_ALIVE_REQUESTS};
     HttpRoutes getRoutes_;
     HttpRoutes postRoutes_;
     struct MountPointEntry {
@@ -76,8 +90,6 @@ private:
         Headers headers;
     };
     std::vector<MountPointEntry> baseDirs_;
-    // std::pair<int,int> first: current request count, second: max keep alive request count
-    std::unordered_map<TcpConnectionPtr, std::pair<int, int>> keepAliveRequests_;
     FileAuthCallback fileAuthCallback_;
 };
 

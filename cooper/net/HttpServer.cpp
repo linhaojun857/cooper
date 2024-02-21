@@ -5,6 +5,9 @@
 
 namespace cooper {
 
+// std::pair<int,int> first: current request count, second: max keep alive request count
+thread_local std::unordered_map<TcpConnectionPtr, std::pair<int, int>> keepAliveRequests;
+
 HttpServer::HttpServer(uint16_t port) {
     loopThread_.run();
     InetAddress addr(port);
@@ -22,9 +25,21 @@ void HttpServer::start(int loopNum) {
         }
     });
     server_->setIoLoopNum(loopNum);
-    server_->kickoffIdleConnections(KEEP_ALIVE_TIMEOUT);
+    server_->kickoffIdleConnections(keepAliveTimeout_);
     server_->start();
     loopThread_.wait();
+}
+
+void HttpServer::stop() {
+    server_->stop();
+}
+
+void HttpServer::setKeepAliveTimeout(size_t timeout) {
+    keepAliveTimeout_ = timeout;
+}
+
+void HttpServer::setMaxKeepAliveRequests(int maxKeepAliveRequests) {
+    maxKeepAliveRequests_ = maxKeepAliveRequests;
 }
 
 void HttpServer::addEndpoint(const std::string& method, const std::string& path, const cooper::HttpHandler& handler) {
@@ -81,21 +96,22 @@ void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer
         response.statusCode_ = HttpStatus::CODE_400;
         sendResponse(conn, response);
         conn->forceClose();
+        keepAliveRequests.erase(conn);
         return;
     }
-    auto it = keepAliveRequests_.find(conn);
-    if (it == keepAliveRequests_.end()) {
+    auto it = keepAliveRequests.find(conn);
+    if (it == keepAliveRequests.end()) {
         if ((request.version_ == "HTTP/1.0" &&
              request.headers_[HttpHeader::CONNECTION] == HttpHeader::Value::CONNECTION_KEEP_ALIVE) ||
             (request.version_ == "HTTP/1.1" &&
              request.headers_[HttpHeader::CONNECTION] != HttpHeader::Value::CONNECTION_CLOSE)) {
             // open keep-alive
-            keepAliveRequests_[conn].first = 0;
-            keepAliveRequests_[conn].second = MAX_KEEP_ALIVE_REQUESTS;
+            keepAliveRequests[conn].first = 0;
+            keepAliveRequests[conn].second = maxKeepAliveRequests_;
         } else {
             // close keep-alive
-            keepAliveRequests_[conn].first = 0;
-            keepAliveRequests_[conn].second = 0;
+            keepAliveRequests[conn].first = 0;
+            keepAliveRequests[conn].second = 0;
         }
     }
     if (!handleFileRequest(request, response)) {
@@ -103,11 +119,12 @@ void HttpServer::recvMsgCallback(const TcpConnectionPtr& conn, MsgBuffer* buffer
     }
     if (response.statusCode_ != HttpStatus::CODE_200) {
         conn->forceClose();
+        keepAliveRequests.erase(conn);
     }
-    keepAliveRequests_[conn].first++;
-    if (keepAliveRequests_[conn].first >= keepAliveRequests_[conn].second) {
+    keepAliveRequests[conn].first++;
+    if (keepAliveRequests[conn].first >= keepAliveRequests[conn].second) {
         conn->forceClose();
-        keepAliveRequests_.erase(conn);
+        keepAliveRequests.erase(conn);
     }
 }
 
@@ -170,13 +187,13 @@ bool HttpServer::handleFileRequest(const cooper::HttpRequest& request, cooper::H
     return false;
 }
 
-bool HttpServer::sendResponse(const cooper::TcpConnectionPtr& conn, cooper::HttpResponse& response) {
+bool HttpServer::sendResponse(const cooper::TcpConnectionPtr& conn, cooper::HttpResponse& response) const {
     std::string res;
     response.headers_[HttpHeader::SERVER] = HttpHeader::Value::SERVER;
-    if (keepAliveRequests_[conn].second == 0) {
+    if (keepAliveRequests[conn].second == 0) {
         // keep-alive is closed
         std::stringstream ss;
-        ss << "timeout=" << KEEP_ALIVE_TIMEOUT << ", max=" << keepAliveRequests_[conn].second;
+        ss << "timeout=" << keepAliveTimeout_ << ", max=" << keepAliveRequests[conn].second;
         response.headers_[HttpHeader::CONNECTION] = ss.str();
     }
     if (!response.body_.empty()) {
