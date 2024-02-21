@@ -67,6 +67,12 @@ int main() {
             "   </body>"
             "</html>";
     });
+    server.addEndpoint("GET", "/hello1", [](HttpRequest& req, HttpResponse& resp) {
+        json j;
+        j["code"] = 20000;
+        j["msg"] = "Hello World!";
+        resp.body_ = j.dump();
+    });
     server.addEndpoint("POST", "/person/add", [&mysql](HttpRequest& req, HttpResponse& resp) {
         auto j = json::parse(req.body_);
         LOG_INFO << "json: \n" << j.dump();
